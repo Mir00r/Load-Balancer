@@ -1,0 +1,57 @@
+load_balancer:
+  strategy: "round_robin"  # Options: round_robin, weighted_round_robin, least_connections
+  port: 8080
+  max_retries: 3
+  retry_delay: 100ms
+  timeout: 30s
+  
+  health_check:
+    enabled: true
+    interval: 30s
+    timeout: 5s
+    healthy_threshold: 2
+    unhealthy_threshold: 3
+    path: "/health"
+  
+  rate_limit:
+    enabled: false
+    requests_per_second: 100
+    burst_size: 200
+  
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    recovery_timeout: 60s
+    max_requests: 10
+
+backends:
+  - id: "backend-1"
+    url: "http://localhost:8081"
+    weight: 1
+    health_check_path: "/health"
+    max_connections: 100
+    timeout: 30s
+  
+  - id: "backend-2"
+    url: "http://localhost:8082"
+    weight: 1
+    health_check_path: "/health"
+    max_connections: 100
+    timeout: 30s
+  
+  - id: "backend-3"
+    url: "http://localhost:8083"
+    weight: 2  # This backend will receive more traffic
+    health_check_path: "/health"
+    max_connections: 150
+    timeout: 30s
+
+logging:
+  level: "info"  # Options: trace, debug, info, warn, error, fatal, panic
+  format: "json"  # Options: json, text
+  output: "stdout"  # Options: stdout, stderr, file
+  file: "logs/load-balancer.log"
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true

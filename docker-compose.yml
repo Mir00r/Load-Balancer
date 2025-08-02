@@ -1,0 +1,175 @@
+version: '3.8'
+
+services:
+  # Load Balancer Service
+  load-balancer:
+    build: .
+    ports:
+      - "8080:8080"
+    # Factor #3: Config - Store config in environment variables
+    environment:
+      # Server configuration
+      - LB_SERVER_HOST=0.0.0.0
+      - LB_SERVER_PORT=8080
+      - LB_SERVER_READ_TIMEOUT=30s
+      - LB_SERVER_WRITE_TIMEOUT=30s
+      - LB_SERVER_IDLE_TIMEOUT=60s
+      
+      # Load balancer configuration
+      - LB_ALGORITHM=round_robin
+      - LB_HEALTH_CHECK_ENABLED=true
+      - LB_HEALTH_CHECK_INTERVAL=30s
+      - LB_HEALTH_CHECK_TIMEOUT=10s
+      - LB_HEALTH_CHECK_RETRIES=3
+      - LB_HEALTH_CHECK_PATH=/health
+      
+      # Rate limiting
+      - LB_RATE_LIMIT_ENABLED=true
+      - LB_RATE_LIMIT_REQUESTS=100
+      - LB_RATE_LIMIT_BURST=10
+      
+      # Circuit breaker
+      - LB_CIRCUIT_BREAKER_ENABLED=true
+      - LB_CIRCUIT_BREAKER_THRESHOLD=5
+      - LB_CIRCUIT_BREAKER_TIMEOUT=60s
+      
+      # Logging
+      - LB_LOG_LEVEL=info
+      - LB_LOG_FORMAT=json
+      
+      # Metrics
+      - LB_METRICS_ENABLED=true
+      
+      # Backend servers (comma-separated)
+      - LB_BACKENDS=http://backend1:8081,http://backend2:8082,http://backend3:8083
+    
+    # Factor #9: Disposability - Graceful shutdown
+    stop_grace_period: 30s
+    
+    # Factor #11: Logs - Treat logs as event streams
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check for service orchestration
+    healthcheck:
+      test: ["/load-balancer", "-admin", "health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits for Factor #8: Concurrency
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Factor #6: Processes - Stateless processes
+    # No volumes for application state
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+    
+    networks:
+      - load-balancer-network
+
+  # Backend Services for Testing
+  backend1:
+    build:
+      context: .
+      dockerfile: examples/backend/Dockerfile
+    ports:
+      - "8081:8081"
+    command: ["./backend", "8081"]
+    environment:
+      - SERVER_PORT=8081
+    networks:
+      - load-balancer-network
+    # Factor #11: Logs as streams
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend2:
+    build:
+      context: .
+      dockerfile: examples/backend/Dockerfile
+    ports:
+      - "8082:8082"
+    command: ["./backend", "8082"]
+    environment:
+      - SERVER_PORT=8082
+    networks:
+      - load-balancer-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend3:
+    build:
+      context: .
+      dockerfile: examples/backend/Dockerfile
+    ports:
+      - "8083:8083"
+    command: ["./backend", "8083"]
+    environment:
+      - SERVER_PORT=8083
+    networks:
+      - load-balancer-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Factor #4: Backing Services - Treat backing services as attached resources
+networks:
+  load-balancer-network:
+    driver: bridge
+
+# Monitoring Stack (optional, for production)
+# Uncomment for production monitoring
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   networks:
+  #     - load-balancer-network
+  
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   networks:
+  #     - load-balancer-network
