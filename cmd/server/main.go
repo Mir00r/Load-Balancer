@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/mir00r/load-balancer/internal/repository"
 	"github.com/mir00r/load-balancer/internal/service"
 	"github.com/mir00r/load-balancer/pkg/logger"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -88,9 +90,6 @@ func main() {
 		log.Fatalf("Failed to set load balancing strategy: %v", err)
 	}
 
-	// Start health checking (if it has a Start method)
-	// healthChecker.Start(context.Background(), loadBalancer)
-
 	// Create handlers
 	lbHandler := handler.NewLoadBalancerHandler(
 		loadBalancer,
@@ -111,6 +110,9 @@ func main() {
 		prometheusHandler = handler.NewPrometheusHandler(loadBalancer, metrics, logger)
 	}
 
+	// Create admin handler
+	adminHandler := handler.NewAdminHandler(loadBalancer, metrics, logger)
+
 	// Create security middleware if configured
 	var securityMiddleware *middleware.SecurityMiddleware
 	if cfg.Security != nil {
@@ -123,31 +125,52 @@ func main() {
 	// Create router
 	router := mux.NewRouter()
 
-	// Setup routes
-	router.HandleFunc("/health", healthCheckHandler(loadBalancer)).Methods("GET")
+	// Swagger documentation endpoint
+	router.PathPrefix("/docs/").Handler(httpSwagger.WrapHandler)
 
-	// Metrics endpoint
+	// API endpoints
+	apiRouter := router.PathPrefix("/api/v1").Subrouter()
+
+	// Health endpoints
+	router.HandleFunc("/health", healthCheckHandler(loadBalancer)).Methods("GET")
+	apiRouter.HandleFunc("/health", enhancedHealthCheckHandler(loadBalancer, metrics)).Methods("GET")
+
+	// Metrics endpoints
 	if prometheusHandler != nil {
 		router.HandleFunc("/metrics", prometheusHandler.MetricsHandler).Methods("GET")
 		router.HandleFunc("/metrics/health", prometheusHandler.HealthCheckMetricsHandler).Methods("GET")
 		router.HandleFunc("/metrics/config", prometheusHandler.ScrapeConfigHandler).Methods("GET")
 	}
 
-	// Load balancer proxy (catch-all)
+	// Admin API endpoints
+	if cfg.Admin.Enabled {
+		adminRouter := apiRouter.PathPrefix("/admin").Subrouter()
+
+		// Backend management
+		adminRouter.HandleFunc("/backends", adminHandler.ListBackendsHandler).Methods("GET")
+		adminRouter.HandleFunc("/backends", adminHandler.AddBackendHandler).Methods("POST")
+		adminRouter.HandleFunc("/backends/{id}", adminHandler.DeleteBackendHandler).Methods("DELETE")
+
+		// Configuration and stats
+		adminRouter.HandleFunc("/config", adminHandler.GetConfigHandler).Methods("GET")
+		adminRouter.HandleFunc("/stats", adminHandler.GetStatsHandler).Methods("GET")
+	}
+
+	// Load balancer proxy (catch-all, should be last)
 	router.PathPrefix("/").Handler(lbHandler)
 
 	// Apply middleware
-	var handler http.Handler = router
+	var handlerChain http.Handler = router
 
 	// Apply security middleware if configured
 	if securityMiddleware != nil {
-		handler = securityMiddleware.SecurityMiddleware()(handler)
+		handlerChain = securityMiddleware.SecurityMiddleware()(handlerChain)
 	}
 
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.LoadBalancer.Port),
-		Handler:      handler,
+		Handler:      handlerChain,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
@@ -155,11 +178,26 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		logger.WithField("port", cfg.LoadBalancer.Port).Info("Starting load balancer server")
+		logger.WithFields(map[string]interface{}{
+			"port": cfg.LoadBalancer.Port,
+			"docs": fmt.Sprintf("http://localhost:%d/docs/", cfg.LoadBalancer.Port),
+		}).Info("Starting production load balancer server")
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
+
+	// Print startup information
+	fmt.Printf("\n🚀 Load Balancer Server Started Successfully!\n")
+	fmt.Printf("📊 Server URL: http://localhost:%d\n", cfg.LoadBalancer.Port)
+	fmt.Printf("📖 API Documentation: http://localhost:%d/docs/\n", cfg.LoadBalancer.Port)
+	fmt.Printf("❤️  Health Check: http://localhost:%d/health\n", cfg.LoadBalancer.Port)
+	fmt.Printf("📈 Metrics: http://localhost:%d/metrics\n", cfg.LoadBalancer.Port)
+	if cfg.Admin.Enabled {
+		fmt.Printf("⚙️  Admin API: http://localhost:%d/api/v1/admin/\n", cfg.LoadBalancer.Port)
+	}
+	fmt.Printf("🛑 Press Ctrl+C to stop\n\n")
 
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
@@ -186,23 +224,100 @@ func healthCheckHandler(lb domain.LoadBalancer) http.HandlerFunc {
 		healthyBackends := lb.GetHealthyBackends()
 		allBackends := lb.GetBackends()
 
-		status := map[string]interface{}{
-			"status":           "healthy",
-			"total_backends":   len(allBackends),
-			"healthy_backends": len(healthyBackends),
-			"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		}
-
 		w.Header().Set("Content-Type", "application/json")
 		if len(healthyBackends) == 0 {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			status["status"] = "unhealthy"
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
 
 		// Simple JSON response
 		fmt.Fprintf(w, `{"status":"%s","total_backends":%d,"healthy_backends":%d,"timestamp":"%s"}`,
-			status["status"], status["total_backends"], status["healthy_backends"], status["timestamp"])
+			getStatusString(len(healthyBackends) > 0), len(allBackends), len(healthyBackends), time.Now().UTC().Format(time.RFC3339))
 	}
+}
+
+// enhancedHealthCheckHandler provides detailed health information
+func enhancedHealthCheckHandler(lb domain.LoadBalancer, metrics domain.Metrics) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		healthyBackends := lb.GetHealthyBackends()
+		allBackends := lb.GetBackends()
+
+		// Get overall stats
+		overallStats := metrics.GetStats()
+		var totalRequests, totalErrors int64
+		if req, exists := overallStats["total_requests"]; exists {
+			if reqInt, ok := req.(int64); ok {
+				totalRequests = reqInt
+			}
+		}
+		if err, exists := overallStats["total_errors"]; exists {
+			if errInt, ok := err.(int64); ok {
+				totalErrors = errInt
+			}
+		}
+
+		// Calculate success rate
+		successRate := 100.0
+		if totalRequests > 0 {
+			successRate = float64(totalRequests-totalErrors) / float64(totalRequests) * 100
+		}
+
+		// Backend details
+		var backendDetails []map[string]interface{}
+		for _, backend := range allBackends {
+			isHealthy := false
+			for _, hb := range healthyBackends {
+				if hb.ID == backend.ID {
+					isHealthy = true
+					break
+				}
+			}
+
+			stats := metrics.GetBackendStats(backend.ID)
+			var backendRequests int64
+			if req, exists := stats["requests"]; exists {
+				if reqInt, ok := req.(int64); ok {
+					backendRequests = reqInt
+				}
+			}
+
+			backendDetails = append(backendDetails, map[string]interface{}{
+				"id":                 backend.ID,
+				"url":                backend.URL,
+				"status":             getStatusString(isHealthy),
+				"active_connections": backend.GetActiveConnections(),
+				"total_requests":     backendRequests,
+			})
+		}
+
+		response := map[string]interface{}{
+			"status":           getStatusString(len(healthyBackends) > 0),
+			"total_backends":   len(allBackends),
+			"healthy_backends": len(healthyBackends),
+			"success_rate":     successRate,
+			"total_requests":   totalRequests,
+			"total_errors":     totalErrors,
+			"timestamp":        time.Now().UTC().Format(time.RFC3339),
+			"backends":         backendDetails,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if len(healthyBackends) == 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
+	}
+}
+
+func getStatusString(isHealthy bool) string {
+	if isHealthy {
+		return "healthy"
+	}
+	return "unhealthy"
 }

@@ -1,0 +1,86 @@
+groups:
+  - name: load-balancer-alerts
+    rules:
+      # Load Balancer Down Alert
+      - alert: LoadBalancerDown
+        expr: up{job="load-balancer"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: load-balancer
+        annotations:
+          summary: "Load balancer is down"
+          description: "Load balancer has been down for more than 30 seconds."
+          
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m]) /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: load-balancer
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for more than 2 minutes."
+          
+      # High Response Time Alert
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: load-balancer
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is above 500ms for more than 5 minutes."
+          
+      # No Healthy Backends Alert
+      - alert: NoHealthyBackends
+        expr: sum(backend_health_status) == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: load-balancer
+        annotations:
+          summary: "No healthy backends available"
+          description: "All backend servers are unhealthy."
+          
+      # Backend Down Alert
+      - alert: BackendDown
+        expr: backend_health_status == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: load-balancer
+        annotations:
+          summary: "Backend server is down"
+          description: "Backend {{ $labels.backend_id }} has been down for more than 2 minutes."
+          
+      # High Memory Usage Alert
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 1073741824  # 1GB
+        for: 10m
+        labels:
+          severity: warning
+          service: load-balancer
+        annotations:
+          summary: "High memory usage"
+          description: "Load balancer memory usage is above 1GB for more than 10 minutes."
+          
+      # High CPU Usage Alert
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: load-balancer
+        annotations:
+          summary: "High CPU usage"
+          description: "Load balancer CPU usage is above 80% for more than 10 minutes."

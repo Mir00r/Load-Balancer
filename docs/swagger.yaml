@@ -1,0 +1,495 @@
+swagger: "2.0"
+info:
+  title: "Load Balancer API"
+  description: "Production-grade load balancer with comprehensive API for backend management and monitoring"
+  version: "1.0.0"
+  contact:
+    name: "Load Balancer Team"
+    email: "support@loadbalancer.com"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+host: "localhost:8080"
+basePath: "/"
+schemes:
+  - "http"
+  - "https"
+
+consumes:
+  - "application/json"
+produces:
+  - "application/json"
+
+tags:
+  - name: "health"
+    description: "Health check endpoints"
+  - name: "metrics"
+    description: "Monitoring and metrics endpoints"
+  - name: "backends"
+    description: "Backend server management"
+  - name: "admin"
+    description: "Administrative operations"
+  - name: "proxy"
+    description: "Load balancing proxy operations"
+
+paths:
+  /health:
+    get:
+      tags:
+        - "health"
+      summary: "Get load balancer health status"
+      description: "Returns the current health status of the load balancer and backend servers"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "Load balancer is healthy"
+          schema:
+            $ref: "#/definitions/HealthResponse"
+        503:
+          description: "Load balancer is unhealthy (no healthy backends)"
+          schema:
+            $ref: "#/definitions/HealthResponse"
+
+  /metrics:
+    get:
+      tags:
+        - "metrics"
+      summary: "Get Prometheus metrics"
+      description: "Returns comprehensive metrics in Prometheus format"
+      produces:
+        - "text/plain"
+      responses:
+        200:
+          description: "Prometheus metrics data"
+          schema:
+            type: "string"
+            example: |
+              # HELP load_balancer_requests_total Total number of requests processed
+              # TYPE load_balancer_requests_total counter
+              load_balancer_requests_total{backend_id="backend-1"} 100
+
+  /metrics/health:
+    get:
+      tags:
+        - "metrics"
+      summary: "Get health check metrics"
+      description: "Returns detailed health check metrics in Prometheus format"
+      produces:
+        - "text/plain"
+      responses:
+        200:
+          description: "Health check metrics data"
+
+  /metrics/config:
+    get:
+      tags:
+        - "metrics"
+      summary: "Get Prometheus scrape configuration"
+      description: "Returns ready-to-use Prometheus scrape configuration"
+      produces:
+        - "text/yaml"
+      responses:
+        200:
+          description: "Prometheus scrape configuration"
+
+  /admin/backends:
+    get:
+      tags:
+        - "backends"
+      summary: "List all backend servers"
+      description: "Returns a list of all configured backend servers with their status"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "List of backend servers"
+          schema:
+            type: "array"
+            items:
+              $ref: "#/definitions/Backend"
+
+    post:
+      tags:
+        - "backends"
+      summary: "Add a new backend server"
+      description: "Adds a new backend server to the load balancer"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "backend"
+          description: "Backend server configuration"
+          required: true
+          schema:
+            $ref: "#/definitions/BackendRequest"
+      responses:
+        201:
+          description: "Backend server added successfully"
+          schema:
+            $ref: "#/definitions/Backend"
+        400:
+          description: "Invalid backend configuration"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        409:
+          description: "Backend with this ID already exists"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+  /admin/backends/{id}:
+    get:
+      tags:
+        - "backends"
+      summary: "Get backend server details"
+      description: "Returns detailed information about a specific backend server"
+      produces:
+        - "application/json"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Backend server ID"
+          required: true
+          type: "string"
+      responses:
+        200:
+          description: "Backend server details"
+          schema:
+            $ref: "#/definitions/Backend"
+        404:
+          description: "Backend server not found"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+    put:
+      tags:
+        - "backends"
+      summary: "Update backend server"
+      description: "Updates an existing backend server configuration"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Backend server ID"
+          required: true
+          type: "string"
+        - in: "body"
+          name: "backend"
+          description: "Updated backend server configuration"
+          required: true
+          schema:
+            $ref: "#/definitions/BackendRequest"
+      responses:
+        200:
+          description: "Backend server updated successfully"
+          schema:
+            $ref: "#/definitions/Backend"
+        400:
+          description: "Invalid backend configuration"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        404:
+          description: "Backend server not found"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+    delete:
+      tags:
+        - "backends"
+      summary: "Remove backend server"
+      description: "Removes a backend server from the load balancer"
+      produces:
+        - "application/json"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Backend server ID"
+          required: true
+          type: "string"
+      responses:
+        204:
+          description: "Backend server removed successfully"
+        404:
+          description: "Backend server not found"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+  /admin/config:
+    get:
+      tags:
+        - "admin"
+      summary: "Get current configuration"
+      description: "Returns the current load balancer configuration"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "Current configuration"
+          schema:
+            $ref: "#/definitions/ConfigResponse"
+
+  /admin/stats:
+    get:
+      tags:
+        - "admin"
+      summary: "Get load balancer statistics"
+      description: "Returns comprehensive statistics about the load balancer performance"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "Load balancer statistics"
+          schema:
+            $ref: "#/definitions/StatsResponse"
+
+  /:
+    get:
+      tags:
+        - "proxy"
+      summary: "Proxy request to backend"
+      description: "Proxies the request to an available backend server using the configured load balancing strategy"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "Successful response from backend"
+        502:
+          description: "Bad gateway - backend server error"
+        503:
+          description: "Service unavailable - no healthy backends"
+
+definitions:
+  HealthResponse:
+    type: "object"
+    properties:
+      status:
+        type: "string"
+        enum: ["healthy", "unhealthy"]
+        description: "Overall health status"
+      total_backends:
+        type: "integer"
+        description: "Total number of configured backends"
+      healthy_backends:
+        type: "integer"
+        description: "Number of healthy backends"
+      timestamp:
+        type: "string"
+        format: "date-time"
+        description: "Timestamp of the health check"
+    example:
+      status: "healthy"
+      total_backends: 3
+      healthy_backends: 2
+      timestamp: "2025-08-03T10:30:00Z"
+
+  Backend:
+    type: "object"
+    properties:
+      id:
+        type: "string"
+        description: "Unique backend identifier"
+      url:
+        type: "string"
+        description: "Backend server URL"
+      weight:
+        type: "integer"
+        description: "Backend weight for load balancing"
+        minimum: 1
+      status:
+        type: "string"
+        enum: ["healthy", "unhealthy", "maintenance"]
+        description: "Current backend status"
+      health_check_path:
+        type: "string"
+        description: "Health check endpoint path"
+      max_connections:
+        type: "integer"
+        description: "Maximum concurrent connections"
+      timeout:
+        type: "string"
+        description: "Request timeout duration"
+      active_connections:
+        type: "integer"
+        description: "Current active connections"
+      total_requests:
+        type: "integer"
+        description: "Total requests processed"
+      error_count:
+        type: "integer"
+        description: "Total error count"
+      last_health_check:
+        type: "string"
+        format: "date-time"
+        description: "Last health check timestamp"
+    example:
+      id: "backend-1"
+      url: "http://localhost:8081"
+      weight: 1
+      status: "healthy"
+      health_check_path: "/health"
+      max_connections: 100
+      timeout: "30s"
+      active_connections: 5
+      total_requests: 1500
+      error_count: 12
+      last_health_check: "2025-08-03T10:29:45Z"
+
+  BackendRequest:
+    type: "object"
+    required:
+      - "id"
+      - "url"
+    properties:
+      id:
+        type: "string"
+        description: "Unique backend identifier"
+      url:
+        type: "string"
+        description: "Backend server URL"
+      weight:
+        type: "integer"
+        description: "Backend weight for load balancing"
+        minimum: 1
+        default: 1
+      health_check_path:
+        type: "string"
+        description: "Health check endpoint path"
+        default: "/health"
+      max_connections:
+        type: "integer"
+        description: "Maximum concurrent connections"
+        default: 100
+      timeout:
+        type: "string"
+        description: "Request timeout duration"
+        default: "30s"
+    example:
+      id: "backend-3"
+      url: "http://localhost:8083"
+      weight: 2
+      health_check_path: "/api/health"
+      max_connections: 200
+      timeout: "45s"
+
+  ConfigResponse:
+    type: "object"
+    properties:
+      strategy:
+        type: "string"
+        enum: ["round_robin", "weighted_round_robin", "least_connections", "ip_hash"]
+        description: "Current load balancing strategy"
+      port:
+        type: "integer"
+        description: "Load balancer listening port"
+      max_retries:
+        type: "integer"
+        description: "Maximum retry attempts"
+      retry_delay:
+        type: "string"
+        description: "Delay between retries"
+      timeout:
+        type: "string"
+        description: "Request timeout"
+      health_check:
+        $ref: "#/definitions/HealthCheckConfig"
+    example:
+      strategy: "round_robin"
+      port: 8080
+      max_retries: 3
+      retry_delay: "100ms"
+      timeout: "30s"
+
+  HealthCheckConfig:
+    type: "object"
+    properties:
+      enabled:
+        type: "boolean"
+        description: "Whether health checking is enabled"
+      interval:
+        type: "string"
+        description: "Health check interval"
+      timeout:
+        type: "string"
+        description: "Health check timeout"
+      healthy_threshold:
+        type: "integer"
+        description: "Consecutive successful checks to mark healthy"
+      unhealthy_threshold:
+        type: "integer"
+        description: "Consecutive failed checks to mark unhealthy"
+      path:
+        type: "string"
+        description: "Health check endpoint path"
+
+  StatsResponse:
+    type: "object"
+    properties:
+      total_requests:
+        type: "integer"
+        description: "Total requests processed"
+      total_errors:
+        type: "integer"
+        description: "Total errors encountered"
+      success_rate:
+        type: "number"
+        format: "float"
+        description: "Overall success rate percentage"
+      average_response_time:
+        type: "number"
+        format: "float"
+        description: "Average response time in milliseconds"
+      uptime:
+        type: "string"
+        description: "Load balancer uptime"
+      active_connections:
+        type: "integer"
+        description: "Current active connections"
+      backend_stats:
+        type: "object"
+        additionalProperties:
+          $ref: "#/definitions/BackendStats"
+
+  BackendStats:
+    type: "object"
+    properties:
+      requests:
+        type: "integer"
+        description: "Requests processed by this backend"
+      errors:
+        type: "integer"
+        description: "Errors from this backend"
+      success_rate:
+        type: "number"
+        format: "float"
+        description: "Success rate percentage"
+      average_response_time:
+        type: "number"
+        format: "float"
+        description: "Average response time in milliseconds"
+      active_connections:
+        type: "integer"
+        description: "Current active connections"
+
+  ErrorResponse:
+    type: "object"
+    properties:
+      error:
+        type: "string"
+        description: "Error message"
+      code:
+        type: "integer"
+        description: "Error code"
+      timestamp:
+        type: "string"
+        format: "date-time"
+        description: "Error timestamp"
+    example:
+      error: "Backend with ID 'backend-1' not found"
+      code: 404
+      timestamp: "2025-08-03T10:30:00Z"

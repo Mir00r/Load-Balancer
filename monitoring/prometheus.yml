@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+scrape_configs:
+  # Load Balancer Metrics
+  - job_name: 'load-balancer'
+    static_configs:
+      - targets: ['load-balancer:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    
+  # Backend Services Monitoring (if they expose metrics)
+  - job_name: 'backend-services'
+    static_configs:
+      - targets: 
+        - 'app1:80'
+        - 'app2:80' 
+        - 'app3:80'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s

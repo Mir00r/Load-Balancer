@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Server 2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            text-align: center;
+            padding: 50px;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .server-info {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .status {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .timestamp {
+            color: #ddd;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Backend Server 2</h1>
+        <div class="server-info">
+            <p><strong>Server ID:</strong> app-server-2</p>
+            <p><strong>Status:</strong> <span class="status">✅ Healthy</span></p>
+            <p><strong>Load Balancer Test:</strong> This is response from Server 2</p>
+            <p><strong>Instance:</strong> Container app2:8080</p>
+            <p class="timestamp">Last updated: <span id="timestamp"></span></p>
+        </div>
+        
+        <div style="margin-top: 30px;">
+            <h3>⚡ Load Distribution Active</h3>
+            <p>You're seeing Server 2! Try refreshing to test round-robin distribution.</p>
+            <button onclick="location.reload()" style="
+                background: #ff6b6b;
+                color: white;
+                border: none;
+                padding: 15px 30px;
+                border-radius: 25px;
+                font-size: 1.1em;
+                cursor: pointer;
+                margin: 10px;
+            ">🔄 Test Again</button>
+        </div>
+
+        <div style="margin-top: 30px; font-size: 0.9em; opacity: 0.8;">
+            <p>Backend: app2 | Port: 8080 | Load Balancer: Active</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('timestamp').textContent = new Date().toLocaleString();
+        
+        // Add some client info
+        setTimeout(() => {
+            const clientInfo = document.createElement('div');
+            clientInfo.innerHTML = `
+                <div style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                    <strong>Client Info:</strong><br>
+                    User Agent: ${navigator.userAgent.substring(0, 50)}...<br>
+                    Timestamp: ${new Date().toISOString()}
+                </div>
+            `;
+            document.querySelector('.container').appendChild(clientInfo);
+        }, 1000);
+    </script>
+</body>
+</html>
