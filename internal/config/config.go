@@ -11,9 +11,50 @@ import (
 
 // Config represents the main configuration structure
 type Config struct {
-	LoadBalancer LoadBalancerConfig `yaml:"load_balancer"`
-	Backends     []BackendConfig    `yaml:"backends"`
-	Logging      LoggingConfig      `yaml:"logging"`
+	Server         ServerConfig           `yaml:"server"`
+	LoadBalancer   LoadBalancerConfig     `yaml:"load_balancer"`
+	Backends       []BackendConfig        `yaml:"backends"`
+	Logging        LoggingConfig          `yaml:"logging"`
+	TLS            *domain.TLSConfig      `yaml:"tls,omitempty"`
+	Security       *domain.SecurityConfig `yaml:"security,omitempty"`
+	L4             *domain.L4Config       `yaml:"l4,omitempty"`
+	ConnectionPool *ConnectionPoolConfig  `yaml:"connection_pool,omitempty"`
+	Metrics        MetricsConfig          `yaml:"metrics"`
+	Admin          AdminConfig            `yaml:"admin"`
+}
+
+// ServerConfig contains HTTP server specific configuration
+type ServerConfig struct {
+	Port         int           `yaml:"port"`
+	ReadTimeout  time.Duration `yaml:"read_timeout"`
+	WriteTimeout time.Duration `yaml:"write_timeout"`
+	IdleTimeout  time.Duration `yaml:"idle_timeout"`
+}
+
+// ConnectionPoolConfig contains connection pool configuration
+type ConnectionPoolConfig struct {
+	MaxIdleConns        int           `yaml:"max_idle_conns"`
+	MaxActiveConns      int           `yaml:"max_active_conns"`
+	MaxConnLifetime     time.Duration `yaml:"max_conn_lifetime"`
+	IdleTimeout         time.Duration `yaml:"idle_timeout"`
+	ConnectTimeout      time.Duration `yaml:"connect_timeout"`
+	HealthCheckInterval time.Duration `yaml:"health_check_interval"`
+	EnableKeepalive     bool          `yaml:"enable_keepalive"`
+	KeepaliveIdle       time.Duration `yaml:"keepalive_idle"`
+}
+
+// MetricsConfig contains metrics configuration
+type MetricsConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Port    int    `yaml:"port"`
+	Path    string `yaml:"path"`
+}
+
+// AdminConfig contains admin API configuration
+type AdminConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Port    int    `yaml:"port"`
+	Path    string `yaml:"path"`
 }
 
 // LoadBalancerConfig contains load balancer specific configuration
@@ -105,6 +146,22 @@ func DefaultConfig() *Config {
 			MaxBackups: 3,
 			MaxAge:     28,
 			Compress:   true,
+		},
+		Server: ServerConfig{
+			Port:         8080,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		},
+		Metrics: MetricsConfig{
+			Enabled: true,
+			Port:    8080,
+			Path:    "/metrics",
+		},
+		Admin: AdminConfig{
+			Enabled: true,
+			Port:    8080,
+			Path:    "/admin",
 		},
 	}
 }

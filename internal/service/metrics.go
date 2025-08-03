@@ -225,6 +225,38 @@ func (m *Metrics) GetBackendStats(backendID string) map[string]interface{} {
 	}
 }
 
+// GetAllBackendStats returns statistics for all backends
+func (m *Metrics) GetAllBackendStats() map[string]map[string]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[string]map[string]interface{})
+
+	for backendID, metrics := range m.backendMetrics {
+		requests := atomic.LoadInt64(&metrics.Requests)
+		errors := atomic.LoadInt64(&metrics.Errors)
+		totalLatency := atomic.LoadInt64(&metrics.TotalLatency)
+
+		var avgLatency float64
+		if requests > 0 {
+			avgLatency = float64(totalLatency) / float64(requests)
+		}
+
+		result[backendID] = map[string]interface{}{
+			"requests":             requests,
+			"errors":               errors,
+			"success_rate":         metrics.SuccessRate,
+			"avg_latency_ms":       avgLatency,
+			"min_latency_ms":       metrics.MinLatency,
+			"max_latency_ms":       metrics.MaxLatency,
+			"last_request":         metrics.LastRequest,
+			"latency_distribution": m.latencyBuckets[backendID],
+		}
+	}
+
+	return result
+}
+
 // Reset resets all metrics
 func (m *Metrics) Reset() {
 	m.mu.Lock()

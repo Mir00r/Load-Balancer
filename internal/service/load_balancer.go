@@ -159,6 +159,56 @@ func (s *LeastConnectionsStrategy) Name() string {
 	return "least_connections"
 }
 
+// IPHashStrategy implements IP hash-based load balancing for session persistence
+type IPHashStrategy struct{}
+
+// NewIPHashStrategy creates a new IP hash strategy
+func NewIPHashStrategy() *IPHashStrategy {
+	return &IPHashStrategy{}
+}
+
+// SelectBackend selects a backend based on client IP hash for session persistence
+func (s *IPHashStrategy) SelectBackend(ctx context.Context, backends []*domain.Backend) (*domain.Backend, error) {
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("no backends available")
+	}
+
+	// Get client IP from context
+	clientIP := s.getClientIP(ctx)
+	if clientIP == "" {
+		// Fallback to round-robin if no IP available
+		return backends[0], nil
+	}
+
+	// Use a simple hash function to determine backend
+	hash := s.hashString(clientIP)
+	index := hash % uint32(len(backends))
+
+	return backends[index], nil
+}
+
+// Name returns the strategy name
+func (s *IPHashStrategy) Name() string {
+	return "ip_hash"
+}
+
+// getClientIP extracts client IP from context
+func (s *IPHashStrategy) getClientIP(ctx context.Context) string {
+	if reqCtx, ok := ctx.Value("requestContext").(*domain.RequestContext); ok {
+		return reqCtx.RemoteAddr
+	}
+	return ""
+}
+
+// hashString implements a simple hash function for IP addresses
+func (s *IPHashStrategy) hashString(s2 string) uint32 {
+	h := uint32(2166136261)
+	for _, c := range s2 {
+		h = (h ^ uint32(c)) * 16777619
+	}
+	return h
+}
+
 // NewLoadBalancer creates a new load balancer instance
 func NewLoadBalancer(
 	config domain.LoadBalancerConfig,
@@ -194,6 +244,8 @@ func (lb *LoadBalancer) setStrategy(strategy domain.LoadBalancingStrategy) error
 		lb.strategy = NewWeightedRoundRobinStrategy(lb.weightedCurrentWeights, &lb.weightedMu)
 	case domain.LeastConnectionsStrategy:
 		lb.strategy = NewLeastConnectionsStrategy()
+	case domain.IPHashStrategy:
+		lb.strategy = NewIPHashStrategy()
 	default:
 		return fmt.Errorf("unsupported load balancing strategy: %s", strategy)
 	}
@@ -225,6 +277,17 @@ func (lb *LoadBalancer) GetBackend(ctx context.Context) (*domain.Backend, error)
 		Debug("Selected backend for request")
 
 	return backend, nil
+}
+
+// SelectBackend selects a backend without context (for Layer 4 and other non-HTTP use cases)
+func (lb *LoadBalancer) SelectBackend() *domain.Backend {
+	ctx := context.Background()
+	backend, err := lb.GetBackend(ctx)
+	if err != nil {
+		lb.logger.WithError(err).Error("Failed to select backend")
+		return nil
+	}
+	return backend
 }
 
 // AddBackend adds a new backend to the pool

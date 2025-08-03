@@ -151,6 +151,8 @@ const (
 	WeightedRoundRobinStrategy LoadBalancingStrategy = "weighted_round_robin"
 	// LeastConnectionsStrategy routes to backend with fewest active connections
 	LeastConnectionsStrategy LoadBalancingStrategy = "least_connections"
+	// IPHashStrategy routes based on client IP hash for session persistence
+	IPHashStrategy LoadBalancingStrategy = "ip_hash"
 )
 
 // HealthCheckConfig defines configuration for health checking
@@ -173,6 +175,8 @@ type LoadBalancerConfig struct {
 	HealthCheck    HealthCheckConfig     `json:"health_check" yaml:"health_check"`
 	RateLimit      RateLimitConfig       `json:"rate_limit" yaml:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig  `json:"circuit_breaker" yaml:"circuit_breaker"`
+	TLS            TLSConfig             `json:"tls" yaml:"tls"`
+	Security       SecurityConfig        `json:"security" yaml:"security"`
 }
 
 // RateLimitConfig defines configuration for rate limiting
@@ -190,10 +194,43 @@ type CircuitBreakerConfig struct {
 	MaxRequests      int           `json:"max_requests" yaml:"max_requests"`
 }
 
+// TLSConfig defines configuration for TLS termination
+type TLSConfig struct {
+	Enabled      bool     `json:"enabled" yaml:"enabled"`
+	CertFile     string   `json:"cert_file" yaml:"cert_file"`
+	KeyFile      string   `json:"key_file" yaml:"key_file"`
+	MinVersion   string   `json:"min_version" yaml:"min_version"`
+	MaxVersion   string   `json:"max_version" yaml:"max_version"`
+	CipherSuites []string `json:"cipher_suites" yaml:"cipher_suites"`
+}
+
+// SecurityConfig defines security-related configuration
+type SecurityConfig struct {
+	IPWhitelist      []string `json:"ip_whitelist" yaml:"ip_whitelist"`
+	IPBlacklist      []string `json:"ip_blacklist" yaml:"ip_blacklist"`
+	DDoSProtection   bool     `json:"ddos_protection" yaml:"ddos_protection"`
+	MaxConnPerIP     int      `json:"max_conn_per_ip" yaml:"max_conn_per_ip"`
+	RequestSizeLimit int64    `json:"request_size_limit" yaml:"request_size_limit"`
+}
+
+// L4Config holds Layer 4 load balancer configuration
+type L4Config struct {
+	Protocol        string        `json:"protocol" yaml:"protocol"`             // "tcp" or "udp"
+	ListenAddress   string        `json:"listen_address" yaml:"listen_address"` // e.g., ":8080"
+	IdleTimeout     time.Duration `json:"idle_timeout" yaml:"idle_timeout"`
+	ConnectTimeout  time.Duration `json:"connect_timeout" yaml:"connect_timeout"`
+	MaxConnections  int           `json:"max_connections" yaml:"max_connections"`
+	BufferSize      int           `json:"buffer_size" yaml:"buffer_size"`
+	EnableKeepalive bool          `json:"enable_keepalive" yaml:"enable_keepalive"`
+	KeepaliveIdle   time.Duration `json:"keepalive_idle" yaml:"keepalive_idle"`
+}
+
 // LoadBalancer defines the interface for load balancer implementations
 type LoadBalancer interface {
 	// GetBackend selects the next available backend based on the configured strategy
 	GetBackend(ctx context.Context) (*Backend, error)
+	// SelectBackend selects a backend without context (for Layer 4)
+	SelectBackend() *Backend
 	// AddBackend adds a new backend to the pool
 	AddBackend(backend *Backend) error
 	// RemoveBackend removes a backend from the pool
@@ -244,6 +281,8 @@ type Metrics interface {
 	GetStats() map[string]interface{}
 	// GetBackendStats returns statistics for a specific backend
 	GetBackendStats(backendID string) map[string]interface{}
+	// GetAllBackendStats returns statistics for all backends
+	GetAllBackendStats() map[string]map[string]interface{}
 }
 
 // RequestContext contains request-specific information
