@@ -113,6 +113,60 @@ func main() {
 	// Create admin handler
 	adminHandler := handler.NewAdminHandler(loadBalancer, metrics, logger)
 
+	// Create configuration handler
+	configHandler := handler.NewConfigHandler(loadBalancer, logger)
+
+	// Create additional NGINX-style handlers
+	staticHandler := handler.NewStaticHandler("./static", logger) // Local static content directory
+	proxyPassHandler := handler.NewProxyPassHandler(logger)
+	wsHandler := handler.NewWebSocketProxyHandler(loadBalancer, metrics, logger)
+	// tcpHandler := handler.NewTCPProxyHandler(loadBalancer, metrics, logger) // For Layer 4 TCP proxying - requires separate TCP server
+
+	// Create NGINX-style middleware
+	var rateLimitMiddleware *middleware.RateLimitMiddleware
+	if cfg.RateLimit != nil && cfg.RateLimit.Enabled {
+		// Convert config types to middleware types
+		rateLimitConfig := middleware.RateLimitConfig{
+			Enabled:         cfg.RateLimit.Enabled,
+			RequestsPerSec:  cfg.RateLimit.RequestsPerSec,
+			BurstSize:       cfg.RateLimit.BurstSize,
+			CleanupInterval: cfg.RateLimit.CleanupInterval,
+			MaxClients:      cfg.RateLimit.MaxClients,
+			WhitelistedIPs:  cfg.RateLimit.WhitelistedIPs,
+			BlacklistedIPs:  cfg.RateLimit.BlacklistedIPs,
+			PathRules:       make(map[string]middleware.PathRateLimit),
+		}
+		// Convert path rules
+		for path, rule := range cfg.RateLimit.PathRules {
+			rateLimitConfig.PathRules[path] = middleware.PathRateLimit{
+				RequestsPerSec: rule.RequestsPerSec,
+				BurstSize:      rule.BurstSize,
+			}
+		}
+		rateLimitMiddleware = middleware.NewRateLimitMiddleware(rateLimitConfig, logger)
+	}
+
+	var authMiddleware *middleware.AuthMiddleware
+	if cfg.Auth != nil && cfg.Auth.Enabled {
+		// Convert config types to middleware types
+		authConfig := middleware.AuthConfig{
+			Enabled:   cfg.Auth.Enabled,
+			Type:      cfg.Auth.Type,
+			Users:     cfg.Auth.Users,
+			Realm:     cfg.Auth.Realm,
+			PathRules: make(map[string]middleware.PathAuth),
+		}
+		// Convert path rules
+		for path, rule := range cfg.Auth.PathRules {
+			authConfig.PathRules[path] = middleware.PathAuth{
+				Required: rule.Required,
+				Users:    rule.Users,
+				Methods:  rule.Methods,
+			}
+		}
+		authMiddleware = middleware.NewAuthMiddleware(authConfig, logger)
+	}
+
 	// Create security middleware if configured
 	var securityMiddleware *middleware.SecurityMiddleware
 	if cfg.Security != nil {
@@ -125,22 +179,33 @@ func main() {
 	// Create router
 	router := mux.NewRouter()
 
-	// Swagger documentation endpoint
-	router.PathPrefix("/docs/").Handler(httpSwagger.WrapHandler)
+	// Serve swagger.yaml file first (most specific)
+	router.HandleFunc("/docs/swagger.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./docs/swagger.yaml")
+	}).Methods("GET")
 
-	// API endpoints
-	apiRouter := router.PathPrefix("/api/v1").Subrouter()
+	// Swagger documentation endpoint (specific prefix)
+	docsRouter := router.PathPrefix("/docs/").Subrouter()
+	docsRouter.PathPrefix("/").Handler(httpSwagger.Handler(
+		httpSwagger.URL("swagger.yaml"), // URL to the swagger.yaml file
+		httpSwagger.DeepLinking(true),
+		httpSwagger.DocExpansion("list"),
+		httpSwagger.DomID("swagger-ui"),
+	))
 
-	// Health endpoints
+	// Health endpoints (specific routes)
 	router.HandleFunc("/health", healthCheckHandler(loadBalancer)).Methods("GET")
-	apiRouter.HandleFunc("/health", enhancedHealthCheckHandler(loadBalancer, metrics)).Methods("GET")
 
-	// Metrics endpoints
+	// Metrics endpoints (specific routes)
 	if prometheusHandler != nil {
 		router.HandleFunc("/metrics", prometheusHandler.MetricsHandler).Methods("GET")
 		router.HandleFunc("/metrics/health", prometheusHandler.HealthCheckMetricsHandler).Methods("GET")
 		router.HandleFunc("/metrics/config", prometheusHandler.ScrapeConfigHandler).Methods("GET")
 	}
+
+	// API endpoints
+	apiRouter := router.PathPrefix("/api/v1").Subrouter()
+	apiRouter.HandleFunc("/health", enhancedHealthCheckHandler(loadBalancer, metrics)).Methods("GET")
 
 	// Admin API endpoints
 	if cfg.Admin.Enabled {
@@ -154,17 +219,51 @@ func main() {
 		// Configuration and stats
 		adminRouter.HandleFunc("/config", adminHandler.GetConfigHandler).Methods("GET")
 		adminRouter.HandleFunc("/stats", adminHandler.GetStatsHandler).Methods("GET")
+
+		// Configuration reload endpoint
+		adminRouter.HandleFunc("/reload", configHandler.ReloadConfigHandler).Methods("POST")
+		adminRouter.HandleFunc("/config/current", configHandler.GetConfigHandler).Methods("GET")
 	}
 
-	// Load balancer proxy (catch-all, should be last)
+	// NGINX-style feature endpoints (specific prefixes)
+	// Static content serving
+	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", staticHandler))
+
+	// WebSocket proxy for /ws/ prefix
+	router.PathPrefix("/ws/").Handler(wsHandler)
+
+	// Proxy pass for specific routes (example configuration)
+	proxyPassHandler.AddRoute("/api/", "http://api.backend.com", "/api")
+	router.PathPrefix("/proxy/").Handler(proxyPassHandler)
+
+	// Load balancer proxy (catch-all, MUST be last)
 	router.PathPrefix("/").Handler(lbHandler)
 
-	// Apply middleware
+	// Apply middleware chain
 	var handlerChain http.Handler = router
+
+	// Apply rate limiting middleware if configured
+	if rateLimitMiddleware != nil {
+		handlerChain = rateLimitMiddleware.RateLimit()(handlerChain)
+		logger.Info("Rate limiting middleware enabled")
+	}
+
+	// Apply authentication middleware if configured
+	if authMiddleware != nil {
+		if cfg.Auth.Type == "basic" {
+			handlerChain = authMiddleware.BasicAuth()(handlerChain)
+		} else if cfg.Auth.Type == "bearer" {
+			handlerChain = authMiddleware.BearerAuth()(handlerChain)
+		}
+		logger.WithFields(map[string]interface{}{
+			"auth_type": cfg.Auth.Type,
+		}).Info("Authentication middleware enabled")
+	}
 
 	// Apply security middleware if configured
 	if securityMiddleware != nil {
 		handlerChain = securityMiddleware.SecurityMiddleware()(handlerChain)
+		logger.Info("Security middleware enabled")
 	}
 
 	// Create HTTP server

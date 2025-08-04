@@ -21,6 +21,10 @@ type Config struct {
 	ConnectionPool *ConnectionPoolConfig  `yaml:"connection_pool,omitempty"`
 	Metrics        MetricsConfig          `yaml:"metrics"`
 	Admin          AdminConfig            `yaml:"admin"`
+	// New NGINX-style features
+	RateLimit *RateLimitConfig `yaml:"rate_limit,omitempty"`
+	Auth      *AuthConfig      `yaml:"auth,omitempty"`
+	SSL       *SSLConfig       `yaml:"ssl,omitempty"`
 }
 
 // ServerConfig contains HTTP server specific configuration
@@ -363,4 +367,52 @@ func (c *Config) SaveToFile(filename string) error {
 	}
 
 	return nil
+}
+
+// RateLimitConfig defines rate limiting configuration
+type RateLimitConfig struct {
+	Enabled         bool                     `yaml:"enabled"`
+	RequestsPerSec  float64                  `yaml:"requests_per_sec"`
+	BurstSize       int                      `yaml:"burst_size"`
+	CleanupInterval time.Duration            `yaml:"cleanup_interval"`
+	MaxClients      int                      `yaml:"max_clients"`
+	WhitelistedIPs  []string                 `yaml:"whitelisted_ips"`
+	BlacklistedIPs  []string                 `yaml:"blacklisted_ips"`
+	PathRules       map[string]PathRateLimit `yaml:"path_rules"`
+}
+
+// PathRateLimit defines rate limiting per path
+type PathRateLimit struct {
+	RequestsPerSec float64 `yaml:"requests_per_sec"`
+	BurstSize      int     `yaml:"burst_size"`
+}
+
+// AuthConfig defines authentication configuration
+type AuthConfig struct {
+	Enabled   bool                    `yaml:"enabled"`
+	Type      string                  `yaml:"type"`  // "basic", "bearer", "jwt"
+	Users     map[string]string       `yaml:"users"` // username -> password hash
+	Realm     string                  `yaml:"realm"`
+	PathRules map[string]PathAuthRule `yaml:"path_rules"`
+}
+
+// PathAuthRule defines authentication rules per path
+type PathAuthRule struct {
+	Required bool              `yaml:"required"`
+	Users    map[string]string `yaml:"users"`
+	Methods  []string          `yaml:"methods"`
+}
+
+// SSLConfig defines SSL/TLS configuration
+type SSLConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	CertFile     string   `yaml:"cert_file"`
+	KeyFile      string   `yaml:"key_file"`
+	MinVersion   string   `yaml:"min_version"`
+	MaxVersion   string   `yaml:"max_version"`
+	Ciphers      []string `yaml:"ciphers"`
+	HTTP2Enabled bool     `yaml:"http2_enabled"`
+	RedirectHTTP bool     `yaml:"redirect_http"`
+	HTTPPort     int      `yaml:"http_port"`
+	HTTPSPort    int      `yaml:"https_port"`
 }
