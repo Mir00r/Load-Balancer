@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mir00r/load-balancer/internal/domain"
+	lberrors "github.com/mir00r/load-balancer/internal/errors"
 	"github.com/mir00r/load-balancer/internal/repository"
 	"github.com/mir00r/load-balancer/pkg/logger"
 )
@@ -20,8 +21,12 @@ type LoadBalancer struct {
 	healthChecker *HealthChecker
 	metrics       domain.Metrics
 	logger        *logger.Logger
-	strategy      LoadBalancingStrategy
+	strategy      domain.LoadBalancingAlgorithm
 
+	// Strategy factory for creating algorithms
+	strategyFactory domain.AlgorithmFactory
+
+	// Legacy fields - will be removed after full migration
 	// Round robin state
 	roundRobinIndex uint64
 
@@ -224,12 +229,13 @@ func NewLoadBalancer(
 		healthChecker:          healthChecker,
 		metrics:                metrics,
 		logger:                 logger.LoadBalancerLogger(),
+		strategyFactory:        domain.NewAlgorithmFactory(),
 		weightedCurrentWeights: make(map[string]int),
 	}
 
 	// Initialize strategy based on configuration
 	if err := lb.setStrategy(config.Strategy); err != nil {
-		return nil, fmt.Errorf("failed to set load balancing strategy: %w", err)
+		return nil, lberrors.NewStrategyError(string(config.Strategy), err)
 	}
 
 	return lb, nil
@@ -237,17 +243,28 @@ func NewLoadBalancer(
 
 // setStrategy sets the load balancing strategy
 func (lb *LoadBalancer) setStrategy(strategy domain.LoadBalancingStrategy) error {
+	// Transitional implementation: Use old strategies but prepare for new interface
+	// TODO: Replace with factory pattern once all strategies implement new interface
+
 	switch strategy {
 	case domain.RoundRobinStrategy:
-		lb.strategy = NewRoundRobinStrategy(&lb.roundRobinIndex)
+		// Create legacy strategy but wrap it
+		legacyStrategy := NewRoundRobinStrategy(&lb.roundRobinIndex)
+		lb.strategy = &LegacyStrategyAdapter{strategy: legacyStrategy}
 	case domain.WeightedRoundRobinStrategy:
-		lb.strategy = NewWeightedRoundRobinStrategy(lb.weightedCurrentWeights, &lb.weightedMu)
+		// Create legacy strategy but wrap it
+		legacyStrategy := NewWeightedRoundRobinStrategy(lb.weightedCurrentWeights, &lb.weightedMu)
+		lb.strategy = &LegacyStrategyAdapter{strategy: legacyStrategy}
 	case domain.LeastConnectionsStrategy:
-		lb.strategy = NewLeastConnectionsStrategy()
+		// Create legacy strategy but wrap it
+		legacyStrategy := NewLeastConnectionsStrategy()
+		lb.strategy = &LegacyStrategyAdapter{strategy: legacyStrategy}
 	case domain.IPHashStrategy:
-		lb.strategy = NewIPHashStrategy()
+		// Create legacy strategy but wrap it
+		legacyStrategy := NewIPHashStrategy()
+		lb.strategy = &LegacyStrategyAdapter{strategy: legacyStrategy}
 	default:
-		return fmt.Errorf("unsupported load balancing strategy: %s", strategy)
+		return lberrors.NewStrategyError(string(strategy), nil)
 	}
 
 	lb.logger.Infof("Load balancing strategy set to: %s", lb.strategy.Name())
@@ -259,17 +276,35 @@ func (lb *LoadBalancer) GetBackend(ctx context.Context) (*domain.Backend, error)
 	// Get available backends
 	backends, err := lb.backendRepo.GetAvailable()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get available backends: %w", err)
+		return nil, lberrors.NewErrorWithCause(
+			lberrors.ErrCodeBackendUnavailable,
+			"load_balancer",
+			"Failed to get available backends",
+			err,
+		)
 	}
 
 	if len(backends) == 0 {
-		return nil, fmt.Errorf("no healthy backends available")
+		return nil, lberrors.NewNoBackendsError()
+	}
+
+	// Extract client IP from context or use empty string as fallback
+	clientIP := ""
+	if ip := ctx.Value("client_ip"); ip != nil {
+		if ipStr, ok := ip.(string); ok {
+			clientIP = ipStr
+		}
 	}
 
 	// Use strategy to select backend
-	backend, err := lb.strategy.SelectBackend(ctx, backends)
+	backend, err := lb.strategy.SelectBackend(ctx, backends, clientIP)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select backend: %w", err)
+		return nil, lberrors.NewErrorWithCause(
+			lberrors.ErrCodeBackendSelection,
+			"load_balancer",
+			"Failed to select backend",
+			err,
+		)
 	}
 
 	lb.logger.WithField("backend_id", backend.ID).
@@ -277,6 +312,51 @@ func (lb *LoadBalancer) GetBackend(ctx context.Context) (*domain.Backend, error)
 		Debug("Selected backend for request")
 
 	return backend, nil
+}
+
+// LegacyStrategyAdapter adapts old LoadBalancingStrategy to new LoadBalancingAlgorithm interface
+type LegacyStrategyAdapter struct {
+	strategy LoadBalancingStrategy
+}
+
+func (adapter *LegacyStrategyAdapter) SelectBackend(ctx context.Context, backends []*domain.Backend, clientIP string) (*domain.Backend, error) {
+	// Call the legacy strategy's SelectBackend method (which doesn't use clientIP)
+	return adapter.strategy.SelectBackend(ctx, backends)
+}
+
+func (adapter *LegacyStrategyAdapter) Name() string {
+	return adapter.strategy.Name()
+}
+
+func (adapter *LegacyStrategyAdapter) Type() domain.StrategyType {
+	// Map legacy strategy names to new types
+	name := adapter.strategy.Name()
+	switch name {
+	case "Round Robin":
+		return domain.RoundRobinStrategyType
+	case "Weighted Round Robin":
+		return domain.WeightedRoundRobinStrategyType
+	case "Least Connections":
+		return domain.LeastConnectionsStrategyType
+	case "IP Hash":
+		return domain.IPHashStrategyType
+	default:
+		return domain.StrategyType(name)
+	}
+}
+
+func (adapter *LegacyStrategyAdapter) Reset() {
+	// Legacy strategies don't have reset functionality
+	// This is a no-op for now
+}
+
+func (adapter *LegacyStrategyAdapter) GetStats() map[string]interface{} {
+	// Legacy strategies don't have stats
+	// Return basic information
+	return map[string]interface{}{
+		"name": adapter.strategy.Name(),
+		"type": "legacy",
+	}
 }
 
 // SelectBackend selects a backend without context (for Layer 4 and other non-HTTP use cases)
