@@ -21,10 +21,12 @@ type Config struct {
 	ConnectionPool *ConnectionPoolConfig  `yaml:"connection_pool,omitempty"`
 	Metrics        MetricsConfig          `yaml:"metrics"`
 	Admin          AdminConfig            `yaml:"admin"`
-	// New NGINX-style features
+	// Legacy NGINX-style features
 	RateLimit *RateLimitConfig `yaml:"rate_limit,omitempty"`
 	Auth      *AuthConfig      `yaml:"auth,omitempty"`
 	SSL       *SSLConfig       `yaml:"ssl,omitempty"`
+	// New Traefik-style advanced features
+	TraefikStyle *TraefikStyleConfig `yaml:"traefik_style,omitempty"`
 }
 
 // ServerConfig contains HTTP server specific configuration

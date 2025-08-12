@@ -50,7 +50,7 @@ func main() {
 	}).Info("Starting production-grade load balancer")
 
 	// Factor #3: Config - Store config in the environment
-	cfg, err := config.Load()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.WithError(err).Fatal("Failed to load configuration")
 	}
@@ -70,10 +70,9 @@ func main() {
 
 	// Convert config to domain config
 	domainConfig := domain.LoadBalancerConfig{
-		Strategy:           cfg.LoadBalancer.Strategy,
-		HealthCheckEnabled: cfg.LoadBalancer.HealthCheck.Enabled,
-		RateLimit:          cfg.LoadBalancer.RateLimit,
-		CircuitBreaker:     cfg.LoadBalancer.CircuitBreaker,
+		Strategy:       domain.LoadBalancingStrategy(cfg.LoadBalancer.Strategy),
+		RateLimit:      cfg.LoadBalancer.RateLimit,
+		CircuitBreaker: cfg.LoadBalancer.CircuitBreaker,
 	}
 
 	// Create load balancer service
@@ -83,7 +82,7 @@ func main() {
 	}
 
 	// Set load balancing strategy
-	if err := loadBalancer.SetStrategy(cfg.LoadBalancer.Strategy); err != nil {
+	if err := loadBalancer.SetStrategy(domain.LoadBalancingStrategy(cfg.LoadBalancer.Strategy)); err != nil {
 		log.WithError(err).Fatal("Failed to set load balancing strategy")
 	}
 
@@ -132,7 +131,18 @@ func main() {
 	)
 
 	// Create reverse proxy handler
-	proxyHandler := handler.NewReverseProxyHandler(loadBalancer, nil, log)
+	proxyHandler := handler.NewLoadBalancerHandler(
+		loadBalancer,
+		metrics,
+		log,
+		domain.LoadBalancerConfig{
+			Strategy:   domain.LoadBalancingStrategy(cfg.LoadBalancer.Strategy),
+			Port:       cfg.LoadBalancer.Port,
+			MaxRetries: cfg.LoadBalancer.MaxRetries,
+			RetryDelay: cfg.LoadBalancer.RetryDelay,
+			Timeout:    cfg.LoadBalancer.Timeout,
+		},
+	)
 
 	// Create HTTP server with middleware stack
 	var finalHandler http.Handler = proxyHandler

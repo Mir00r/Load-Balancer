@@ -27,13 +27,13 @@ type ConfigReloadService struct {
 
 // NewConfigReloadService creates a new configuration reload service
 func NewConfigReloadService(
-	config *config.Config,
+	cfg *config.Config,
 	loadBalancer *LoadBalancer, // Use concrete type
 	configFilePath string,
 	logger *logger.Logger,
 ) *ConfigReloadService {
 	return &ConfigReloadService{
-		config:          config,
+		config:          cfg,
 		loadBalancer:    loadBalancer,
 		configFilePath:  configFilePath,
 		logger:          logger,
