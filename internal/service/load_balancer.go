@@ -59,9 +59,21 @@ func (s *RoundRobinStrategy) SelectBackend(ctx context.Context, backends []*doma
 		return nil, fmt.Errorf("no backends available")
 	}
 
+	// Filter out unhealthy backends
+	healthyBackends := make([]*domain.Backend, 0, len(backends))
+	for _, backend := range backends {
+		if backend.IsHealthy() {
+			healthyBackends = append(healthyBackends, backend)
+		}
+	}
+
+	if len(healthyBackends) == 0 {
+		return nil, fmt.Errorf("no healthy backends available")
+	}
+
 	// Get next index atomically
 	next := atomic.AddUint64(s.index, 1)
-	return backends[(next-1)%uint64(len(backends))], nil
+	return healthyBackends[(next-1)%uint64(len(healthyBackends))], nil
 }
 
 // Name returns the strategy name
@@ -89,12 +101,24 @@ func (s *WeightedRoundRobinStrategy) SelectBackend(ctx context.Context, backends
 		return nil, fmt.Errorf("no backends available")
 	}
 
+	// Filter out unhealthy backends
+	healthyBackends := make([]*domain.Backend, 0, len(backends))
+	for _, backend := range backends {
+		if backend.IsHealthy() {
+			healthyBackends = append(healthyBackends, backend)
+		}
+	}
+
+	if len(healthyBackends) == 0 {
+		return nil, fmt.Errorf("no healthy backends available")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Initialize current weights if needed
 	totalWeight := 0
-	for _, backend := range backends {
+	for _, backend := range healthyBackends {
 		if _, exists := s.currentWeights[backend.ID]; !exists {
 			s.currentWeights[backend.ID] = 0
 		}
@@ -103,14 +127,14 @@ func (s *WeightedRoundRobinStrategy) SelectBackend(ctx context.Context, backends
 
 	if totalWeight == 0 {
 		// If all weights are 0, fall back to round-robin
-		return backends[rand.Intn(len(backends))], nil
+		return healthyBackends[rand.Intn(len(healthyBackends))], nil
 	}
 
 	// Find backend with highest current weight
 	var selected *domain.Backend
 	maxWeight := -1
 
-	for _, backend := range backends {
+	for _, backend := range healthyBackends {
 		s.currentWeights[backend.ID] += backend.Weight
 		if s.currentWeights[backend.ID] > maxWeight {
 			maxWeight = s.currentWeights[backend.ID]
@@ -144,19 +168,31 @@ func (s *LeastConnectionsStrategy) SelectBackend(ctx context.Context, backends [
 		return nil, fmt.Errorf("no backends available")
 	}
 
+	// Filter out unhealthy backends
+	healthyBackends := make([]*domain.Backend, 0, len(backends))
+	for _, backend := range backends {
+		if backend.IsHealthy() {
+			healthyBackends = append(healthyBackends, backend)
+		}
+	}
+
+	if len(healthyBackends) == 0 {
+		return nil, fmt.Errorf("no healthy backends available")
+	}
+
 	// Sort backends by active connections (ascending)
-	sort.Slice(backends, func(i, j int) bool {
-		connectionsI := backends[i].GetActiveConnections()
-		connectionsJ := backends[j].GetActiveConnections()
+	sort.Slice(healthyBackends, func(i, j int) bool {
+		connectionsI := healthyBackends[i].GetActiveConnections()
+		connectionsJ := healthyBackends[j].GetActiveConnections()
 
 		if connectionsI == connectionsJ {
 			// If connections are equal, consider weights
-			return backends[i].Weight > backends[j].Weight
+			return healthyBackends[i].Weight > healthyBackends[j].Weight
 		}
 		return connectionsI < connectionsJ
 	})
 
-	return backends[0], nil
+	return healthyBackends[0], nil
 }
 
 // Name returns the strategy name
@@ -178,18 +214,30 @@ func (s *IPHashStrategy) SelectBackend(ctx context.Context, backends []*domain.B
 		return nil, fmt.Errorf("no backends available")
 	}
 
+	// Filter out unhealthy backends
+	healthyBackends := make([]*domain.Backend, 0, len(backends))
+	for _, backend := range backends {
+		if backend.IsHealthy() {
+			healthyBackends = append(healthyBackends, backend)
+		}
+	}
+
+	if len(healthyBackends) == 0 {
+		return nil, fmt.Errorf("no healthy backends available")
+	}
+
 	// Get client IP from context
 	clientIP := s.getClientIP(ctx)
 	if clientIP == "" {
 		// Fallback to round-robin if no IP available
-		return backends[0], nil
+		return healthyBackends[0], nil
 	}
 
 	// Use a simple hash function to determine backend
 	hash := s.hashString(clientIP)
-	index := hash % uint32(len(backends))
+	index := hash % uint32(len(healthyBackends))
 
-	return backends[index], nil
+	return healthyBackends[index], nil
 }
 
 // Name returns the strategy name

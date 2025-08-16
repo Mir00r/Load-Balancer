@@ -37,14 +37,14 @@ const (
 // monitoring and management purposes.
 type QuicConnection struct {
 	// Connection identity and network information
-	ID         string    `json:"id"`
-	RemoteAddr net.Addr  `json:"remote_addr"`
-	LocalAddr  net.Addr  `json:"local_addr"`
-	
+	ID         string   `json:"id"`
+	RemoteAddr net.Addr `json:"remote_addr"`
+	LocalAddr  net.Addr `json:"local_addr"`
+
 	// Timing information
-	ConnectedAt   time.Time `json:"connected_at"`
-	LastActivity  time.Time `json:"last_activity"`
-	
+	ConnectedAt  time.Time `json:"connected_at"`
+	LastActivity time.Time `json:"last_activity"`
+
 	// Stream and data statistics
 	StreamCount     int   `json:"stream_count"`
 	MaxStreams      int   `json:"max_streams"`
@@ -53,16 +53,16 @@ type QuicConnection struct {
 	PacketsSent     int64 `json:"packets_sent"`
 	PacketsReceived int64 `json:"packets_received"`
 	PacketsLost     int64 `json:"packets_lost"`
-	
+
 	// Performance metrics
 	RTTMicroseconds int64 `json:"rtt_microseconds"`
 	Bandwidth       int64 `json:"bandwidth_bps"`
-	
+
 	// Connection state
-	State         string `json:"state"` // "active", "idle", "closing", "closed"
-	Closed        bool   `json:"closed"`
-	MigrationCount int   `json:"migration_count"`
-	
+	State          string `json:"state"` // "active", "idle", "closing", "closed"
+	Closed         bool   `json:"closed"`
+	MigrationCount int    `json:"migration_count"`
+
 	// Feature support
 	SupportsDatagrams bool `json:"supports_datagrams"`
 	Supports0RTT      bool `json:"supports_0rtt"`
@@ -77,37 +77,37 @@ type HTTP3Stats struct {
 	RequestsSuccessful int64 `json:"requests_successful"`
 	RequestsFailed     int64 `json:"requests_failed"`
 	RequestsActive     int64 `json:"requests_active"`
-	
+
 	// Connection statistics
-	ConnectionsTotal    int64 `json:"connections_total"`
-	ConnectionsActive   int64 `json:"connections_active"`
-	ConnectionsClosed   int64 `json:"connections_closed"`
+	ConnectionsTotal     int64 `json:"connections_total"`
+	ConnectionsActive    int64 `json:"connections_active"`
+	ConnectionsClosed    int64 `json:"connections_closed"`
 	ConnectionMigrations int64 `json:"connection_migrations"`
-	
-	// Stream statistics  
-	StreamsTotal       int64 `json:"streams_total"`
-	StreamsActive      int64 `json:"streams_active"`
-	StreamsBidirectional int64 `json:"streams_bidirectional"`
+
+	// Stream statistics
+	StreamsTotal          int64 `json:"streams_total"`
+	StreamsActive         int64 `json:"streams_active"`
+	StreamsBidirectional  int64 `json:"streams_bidirectional"`
 	StreamsUnidirectional int64 `json:"streams_unidirectional"`
-	
+
 	// Data transfer statistics
-	BytesSent     int64 `json:"bytes_sent"`
-	BytesReceived int64 `json:"bytes_received"`
-	PacketsSent   int64 `json:"packets_sent"`
+	BytesSent       int64 `json:"bytes_sent"`
+	BytesReceived   int64 `json:"bytes_received"`
+	PacketsSent     int64 `json:"packets_sent"`
 	PacketsReceived int64 `json:"packets_received"`
-	PacketsLost   int64 `json:"packets_lost"`
-	
+	PacketsLost     int64 `json:"packets_lost"`
+
 	// Performance metrics
 	AverageLatency        float64 `json:"average_latency_ms"`
 	AverageRTT            float64 `json:"average_rtt_ms"`
 	AverageBandwidth      float64 `json:"average_bandwidth_mbps"`
 	RequestsPerConnection float64 `json:"requests_per_connection"`
-	
+
 	// Protocol-specific features
-	ZeroRTTAttempts   int64 `json:"zero_rtt_attempts"`
-	ZeroRTTSuccessful int64 `json:"zero_rtt_successful"`
+	ZeroRTTAttempts    int64 `json:"zero_rtt_attempts"`
+	ZeroRTTSuccessful  int64 `json:"zero_rtt_successful"`
 	DatagramsSupported bool  `json:"datagrams_supported"`
-	
+
 	// Timing information
 	LastStartTime time.Time `json:"last_start_time"`
 	Uptime        string    `json:"uptime"`
@@ -121,35 +121,35 @@ type HTTP3Handler struct {
 	config       config.HTTP3Config
 	logger       *logger.Logger
 	loadBalancer domain.LoadBalancer
-	
+
 	// HTTP server infrastructure
 	server *http.Server
-	
+
 	// QUIC connection management
 	connections map[string]*QuicConnection
 	connMutex   sync.RWMutex
-	
+
 	// Statistics and monitoring
 	stats      *HTTP3Stats
 	statsMutex sync.RWMutex
-	
+
 	// Lifecycle management
 	running      bool
 	runningMutex sync.RWMutex
 	stopChan     chan struct{}
-	
+
 	// TLS configuration
 	certFile string
 	keyFile  string
-	
+
 	// Performance configuration
-	maxStreams         int64
-	maxIdleTimeout     time.Duration
-	streamTimeout      time.Duration
-	cleanupInterval    time.Duration
-	enableDatagrams    bool
-	enableMigration    bool
-	enable0RTT         bool
+	maxStreams      int64
+	maxIdleTimeout  time.Duration
+	streamTimeout   time.Duration
+	cleanupInterval time.Duration
+	enableDatagrams bool
+	enableMigration bool
+	enable0RTT      bool
 }
 
 // NewHTTP3Handler creates a new HTTP/3 handler with comprehensive QUIC support.
@@ -169,7 +169,7 @@ func NewHTTP3Handler(
 	loadBalancer domain.LoadBalancer,
 	logger *logger.Logger,
 ) (*HTTP3Handler, error) {
-	
+
 	// Check if HTTP/3 is disabled
 	if !cfg.Enabled {
 		logger.Info("HTTP/3 support is disabled in configuration")
@@ -207,8 +207,8 @@ func NewHTTP3Handler(
 		streamTimeout:   cfg.MaxStreamTimeout,
 		cleanupInterval: ConnectionCleanupInterval,
 		enableDatagrams: cfg.EnableDatagrams,
-		enableMigration: true,  // Enable by default for modern QUIC
-		enable0RTT:      true,  // Enable by default for performance
+		enableMigration: true, // Enable by default for modern QUIC
+		enable0RTT:      true, // Enable by default for performance
 		running:         false,
 	}
 
@@ -226,16 +226,16 @@ func NewHTTP3Handler(
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"component":                 "http3_handler",
-		"port":                     cfg.Port,
-		"cert_file":                cfg.CertFile,
-		"key_file":                 cfg.KeyFile,
-		"max_streams":              handler.maxStreams,
-		"max_idle_timeout":         handler.maxIdleTimeout,
-		"stream_timeout":           handler.streamTimeout,
-		"enable_datagrams":         handler.enableDatagrams,
-		"enable_migration":         handler.enableMigration,
-		"enable_0rtt":              handler.enable0RTT,
+		"component":        "http3_handler",
+		"port":             cfg.Port,
+		"cert_file":        cfg.CertFile,
+		"key_file":         cfg.KeyFile,
+		"max_streams":      handler.maxStreams,
+		"max_idle_timeout": handler.maxIdleTimeout,
+		"stream_timeout":   handler.streamTimeout,
+		"enable_datagrams": handler.enableDatagrams,
+		"enable_migration": handler.enableMigration,
+		"enable_0rtt":      handler.enable0RTT,
 	}).Info("HTTP/3 handler initialized successfully")
 
 	return handler, nil
@@ -287,15 +287,15 @@ func (h *HTTP3Handler) applyDefaults() {
 // setupHTTPServer configures the HTTP server with proper routing and middleware.
 func (h *HTTP3Handler) setupHTTPServer() error {
 	mux := http.NewServeMux()
-	
+
 	// Main request handler
 	mux.HandleFunc("/", h.handleHTTP3Request)
-	
+
 	// Operational endpoints
 	mux.HandleFunc("/health", h.handleHealth)
 	mux.HandleFunc("/stats", h.handleStats)
 	mux.HandleFunc("/connections", h.handleConnections)
-	
+
 	h.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", h.config.Port),
 		Handler:      mux,
@@ -353,9 +353,9 @@ func (h *HTTP3Handler) Start(ctx context.Context) error {
 		"component": "http3_handler",
 		"port":      h.config.Port,
 		"features": map[string]bool{
-			"datagrams":         h.enableDatagrams,
+			"datagrams":            h.enableDatagrams,
 			"connection_migration": h.enableMigration,
-			"0rtt_resumption":   h.enable0RTT,
+			"0rtt_resumption":      h.enable0RTT,
 		},
 	}).Info("HTTP/3 server started successfully")
 
@@ -396,8 +396,8 @@ func (h *HTTP3Handler) Stop(ctx context.Context) error {
 
 	h.logger.WithFields(map[string]interface{}{
 		"component":         "http3_handler",
-		"uptime":           time.Since(h.stats.LastStartTime).String(),
-		"total_requests":   h.stats.RequestsTotal,
+		"uptime":            time.Since(h.stats.LastStartTime).String(),
+		"total_requests":    h.stats.RequestsTotal,
 		"total_connections": h.stats.ConnectionsTotal,
 	}).Info("HTTP/3 server stopped successfully")
 
@@ -418,68 +418,68 @@ func (h *HTTP3Handler) GetStats() map[string]interface{} {
 	defer h.statsMutex.RUnlock()
 
 	uptime := time.Since(h.stats.LastStartTime)
-	
+
 	return map[string]interface{}{
-		"enabled":                    h.IsEnabled(),
-		"status":                    h.getStatus(),
-		"port":                      h.config.Port,
-		"uptime":                    uptime.String(),
-		"uptime_seconds":            uptime.Seconds(),
-		
+		"enabled":        h.IsEnabled(),
+		"status":         h.getStatus(),
+		"port":           h.config.Port,
+		"uptime":         uptime.String(),
+		"uptime_seconds": uptime.Seconds(),
+
 		// Request statistics
-		"requests_total":            h.stats.RequestsTotal,
-		"requests_successful":       h.stats.RequestsSuccessful,
-		"requests_failed":           h.stats.RequestsFailed,
-		"requests_active":           h.stats.RequestsActive,
-		
+		"requests_total":      h.stats.RequestsTotal,
+		"requests_successful": h.stats.RequestsSuccessful,
+		"requests_failed":     h.stats.RequestsFailed,
+		"requests_active":     h.stats.RequestsActive,
+
 		// Connection statistics
-		"connections_total":         h.stats.ConnectionsTotal,
-		"connections_active":        h.stats.ConnectionsActive,
-		"connections_closed":        h.stats.ConnectionsClosed,
-		"connection_migrations":     h.stats.ConnectionMigrations,
-		
+		"connections_total":     h.stats.ConnectionsTotal,
+		"connections_active":    h.stats.ConnectionsActive,
+		"connections_closed":    h.stats.ConnectionsClosed,
+		"connection_migrations": h.stats.ConnectionMigrations,
+
 		// Stream statistics
-		"streams_total":             h.stats.StreamsTotal,
-		"streams_active":            h.stats.StreamsActive,
-		"streams_bidirectional":     h.stats.StreamsBidirectional,
-		"streams_unidirectional":    h.stats.StreamsUnidirectional,
-		
+		"streams_total":          h.stats.StreamsTotal,
+		"streams_active":         h.stats.StreamsActive,
+		"streams_bidirectional":  h.stats.StreamsBidirectional,
+		"streams_unidirectional": h.stats.StreamsUnidirectional,
+
 		// Data transfer statistics
-		"bytes_sent":                h.stats.BytesSent,
-		"bytes_received":            h.stats.BytesReceived,
-		"packets_sent":              h.stats.PacketsSent,
-		"packets_received":          h.stats.PacketsReceived,
-		"packets_lost":              h.stats.PacketsLost,
-		
+		"bytes_sent":       h.stats.BytesSent,
+		"bytes_received":   h.stats.BytesReceived,
+		"packets_sent":     h.stats.PacketsSent,
+		"packets_received": h.stats.PacketsReceived,
+		"packets_lost":     h.stats.PacketsLost,
+
 		// Performance metrics
-		"average_latency_ms":        h.stats.AverageLatency,
-		"average_rtt_ms":            h.stats.AverageRTT,
-		"average_bandwidth_mbps":    h.stats.AverageBandwidth,
-		"requests_per_connection":   h.stats.RequestsPerConnection,
-		
+		"average_latency_ms":      h.stats.AverageLatency,
+		"average_rtt_ms":          h.stats.AverageRTT,
+		"average_bandwidth_mbps":  h.stats.AverageBandwidth,
+		"requests_per_connection": h.stats.RequestsPerConnection,
+
 		// Protocol features
-		"zero_rtt_attempts":         h.stats.ZeroRTTAttempts,
-		"zero_rtt_successful":       h.stats.ZeroRTTSuccessful,
-		"datagrams_supported":       h.stats.DatagramsSupported,
-		
+		"zero_rtt_attempts":   h.stats.ZeroRTTAttempts,
+		"zero_rtt_successful": h.stats.ZeroRTTSuccessful,
+		"datagrams_supported": h.stats.DatagramsSupported,
+
 		// Configuration
-		"max_streams":               h.maxStreams,
-		"max_idle_timeout":          h.maxIdleTimeout.String(),
-		"stream_timeout":            h.streamTimeout.String(),
-		
+		"max_streams":      h.maxStreams,
+		"max_idle_timeout": h.maxIdleTimeout.String(),
+		"stream_timeout":   h.streamTimeout.String(),
+
 		// Feature support
 		"features": map[string]bool{
-			"stream_multiplexing":      true,
-			"server_push":             true,
-			"connection_migration":     h.enableMigration,
-			"0rtt_resumption":         h.enable0RTT,
-			"datagram_support":        h.enableDatagrams,
+			"stream_multiplexing":  true,
+			"server_push":          true,
+			"connection_migration": h.enableMigration,
+			"0rtt_resumption":      h.enable0RTT,
+			"datagram_support":     h.enableDatagrams,
 		},
-		
+
 		// Protocol information
-		"protocols":                 []string{"h3", "h3-29", "h3-32"},
-		"quic_version":              "1.0",
-		"tls_version":               "1.3",
+		"protocols":    []string{"h3", "h3-29", "h3-32"},
+		"quic_version": "1.0",
+		"tls_version":  "1.3",
 	}
 }
 
@@ -495,7 +495,7 @@ func (h *HTTP3Handler) getStatus() string {
 func (h *HTTP3Handler) resetStats() {
 	h.statsMutex.Lock()
 	defer h.statsMutex.Unlock()
-	
+
 	h.stats = &HTTP3Stats{
 		LastStartTime:      time.Now(),
 		DatagramsSupported: h.enableDatagrams,
@@ -541,7 +541,7 @@ func (h *HTTP3Handler) cleanupStaleConnections() {
 
 	if len(staleConnections) > 0 {
 		h.logger.WithFields(map[string]interface{}{
-			"component":         "http3_handler",
+			"component":           "http3_handler",
 			"cleaned_connections": len(staleConnections),
 		}).Debug("Cleaned up stale HTTP/3 connections")
 	}
@@ -568,15 +568,15 @@ func (h *HTTP3Handler) statisticsCollector(ctx context.Context) {
 func (h *HTTP3Handler) updateDerivedStatistics() {
 	h.statsMutex.Lock()
 	defer h.statsMutex.Unlock()
-	
+
 	// Update uptime
 	h.stats.Uptime = time.Since(h.stats.LastStartTime).String()
-	
+
 	// Calculate requests per connection
 	if h.stats.ConnectionsTotal > 0 {
 		h.stats.RequestsPerConnection = float64(h.stats.RequestsTotal) / float64(h.stats.ConnectionsTotal)
 	}
-	
+
 	// Calculate average bandwidth
 	uptime := time.Since(h.stats.LastStartTime)
 	if uptime.Seconds() > 0 {
@@ -604,7 +604,7 @@ func (h *HTTP3Handler) closeAllConnections() {
 func (h *HTTP3Handler) updateConnectionStats(activeChange, totalChange, closedChange int64) {
 	h.statsMutex.Lock()
 	defer h.statsMutex.Unlock()
-	
+
 	h.stats.ConnectionsActive += activeChange
 	h.stats.ConnectionsTotal += totalChange
 	h.stats.ConnectionsClosed += closedChange
@@ -613,13 +613,13 @@ func (h *HTTP3Handler) updateConnectionStats(activeChange, totalChange, closedCh
 // handleHTTP3Request processes incoming HTTP/3 requests.
 func (h *HTTP3Handler) handleHTTP3Request(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	
+
 	// Increment active requests
 	h.statsMutex.Lock()
 	h.stats.RequestsActive++
 	h.stats.RequestsTotal++
 	h.statsMutex.Unlock()
-	
+
 	// Decrement when done
 	defer func() {
 		h.statsMutex.Lock()
@@ -658,17 +658,17 @@ func (h *HTTP3Handler) trackConnection(connID string, r *http.Request) {
 
 	if _, exists := h.connections[connID]; !exists {
 		conn := &QuicConnection{
-			ID:           connID,
-			RemoteAddr:   parseAddr(r.RemoteAddr),
-			LocalAddr:    parseAddr(fmt.Sprintf(":%d", h.config.Port)),
-			ConnectedAt:  time.Now(),
-			LastActivity: time.Now(),
-			MaxStreams:   int(h.maxStreams),
-			State:        "active",
+			ID:                connID,
+			RemoteAddr:        parseAddr(r.RemoteAddr),
+			LocalAddr:         parseAddr(fmt.Sprintf(":%d", h.config.Port)),
+			ConnectedAt:       time.Now(),
+			LastActivity:      time.Now(),
+			MaxStreams:        int(h.maxStreams),
+			State:             "active",
 			SupportsDatagrams: h.enableDatagrams,
-			Supports0RTT:     h.enable0RTT,
+			Supports0RTT:      h.enable0RTT,
 		}
-		
+
 		h.connections[connID] = conn
 		h.updateConnectionStats(1, 1, 0)
 	} else {
@@ -734,14 +734,14 @@ func (h *HTTP3Handler) handleRequestError(w http.ResponseWriter, r *http.Request
 func (h *HTTP3Handler) updateRequestStats(success bool, bytesSent, bytesFailed int64, latency time.Duration) {
 	h.statsMutex.Lock()
 	defer h.statsMutex.Unlock()
-	
+
 	if success {
 		h.stats.RequestsSuccessful++
 		h.stats.BytesSent += bytesSent
 	} else {
 		h.stats.RequestsFailed++
 	}
-	
+
 	// Update average latency
 	if h.stats.RequestsTotal > 0 {
 		alpha := 0.1
@@ -771,7 +771,7 @@ func (h *HTTP3Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleStats provides detailed HTTP/3 statistics endpoint.
 func (h *HTTP3Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := h.GetStats()
-	
+
 	statsResponse := fmt.Sprintf(`{
   "enabled": %t,
   "status": "%s",
@@ -787,7 +787,7 @@ func (h *HTTP3Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 }`, stats["enabled"], stats["status"], stats["port"], stats["uptime"],
 		stats["requests_total"], stats["requests_successful"], stats["requests_failed"],
 		stats["connections_total"], stats["connections_active"], stats["average_latency_ms"])
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(statsResponse))
@@ -836,4 +836,3 @@ func parsePort(portStr string) (int, error) {
 	}
 	return port, nil
 }
-
