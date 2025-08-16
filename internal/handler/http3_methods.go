@@ -1,5 +1,17 @@
 // Additional methods for the HTTP/3 handler
 // These methods complete the HTTP/3 handler functionality
+package handler
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/mir00r/load-balancer/internal/domain"
+)
 
 // getStatus returns the current status of the HTTP/3 handler.
 func (h *HTTP3Handler) getStatus() string {
